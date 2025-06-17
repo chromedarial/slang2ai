@@ -1,81 +1,130 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+
+type Message = {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+};
 
 export default function SpeakingPage() {
-  const [mode, setMode] = useState('');
-  const [conversation, setConversation] = useState<string[]>([]);
-  const [recognition, setRecognition] = useState<any>(null);
-  const [isListening, setIsListening] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<string | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recog = new SpeechRecognition();
-        recog.lang = 'en-US';
-        recog.interimResults = false;
-        recog.onresult = async (event: any) => {
-          const transcript = event.results[0][0].transcript;
-          setConversation((prev) => [...prev, `🧑 You: ${transcript}`]);
-          const res = await fetch('/api/speaking', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode, message: transcript }),
-          });
-          const data = await res.json();
-          setConversation((prev) => [...prev, `🤖 AI: ${data.reply}`]);
-        };
-        setRecognition(recog);
-      }
-    }
-  }, [mode]);
-
-  const startListening = () => {
-    if (recognition) {
-      setIsListening(true);
-      recognition.start();
-    }
+  const predefinedPrompts: { [key: string]: string } = {
+    interview: 'Act as an English job interviewer for the position described. Ask typical questions and wait for answers.',
+    meeting: 'Simulate a real business meeting about reports, decisions or sales. Ask naturally and wait for answers.',
+    casual: 'Start a light casual conversation about hobbies, travel, or culture. Help the user get comfortable.',
+    continue: 'Continue the last conversation we were having with the user, naturally.',
   };
 
-  const stopListening = () => {
-    if (recognition) {
-      setIsListening(false);
-      recognition.stop();
-    }
+  const scrollToBottom = () => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleMode = async (selectedMode: string) => {
+  useEffect(scrollToBottom, [messages]);
+
+  const startMode = (selectedMode: string) => {
+    const systemMessage: Message = {
+      role: 'system',
+      content: predefinedPrompts[selectedMode],
+    };
+    setMessages([systemMessage]);
     setMode(selectedMode);
-    setConversation([]);
+  };
+
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+    const newMessages = [...messages, { role: 'user', content: input }];
+    setMessages(newMessages);
+    setInput('');
+    setLoading(true);
+
     const res = await fetch('/api/speaking', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: selectedMode }),
+      body: JSON.stringify({ messages: newMessages }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
     });
-    const data = await res.json();
-    setConversation([`🤖 AI: ${data.reply}`]);
+
+    const reader = res.body?.getReader();
+    if (!reader) {
+      setLoading(false);
+      return;
+    }
+
+    const decoder = new TextDecoder('utf-8');
+    let result = '';
+    setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      result += decoder.decode(value);
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1].content = result;
+        return updated;
+      });
+    }
+
+    setLoading(false);
   };
 
   return (
-    <div style={{ padding: '2rem' }}>
-      <h1>🗣️ Speaking with AI</h1>
-      {!mode ? (
+    <div style={{ padding: 24, fontFamily: 'sans-serif' }}>
+      <h1>🗣️ lang2ai – Speaking Practice</h1>
+
+      {!mode && (
+        <div style={{ marginTop: 20 }}>
+          <p>Choose a conversation type to start:</p>
+          <button onClick={() => startMode('interview')}>Job Interview</button>{' '}
+          <button onClick={() => startMode('meeting')}>Business Meeting</button>{' '}
+          <button onClick={() => startMode('casual')}>Casual Speaking</button>{' '}
+          <button onClick={() => startMode('continue')}>Continue Last Session</button>
+        </div>
+      )}
+
+      {mode && (
         <>
-          <p>Select a speaking mode:</p>
-          <button onClick={() => handleMode('interview')}>Job Interview</button>
-          <button onClick={() => handleMode('meeting')}>Business Meeting</button>
-          <button onClick={() => handleMode('casual')}>Casual Speaking</button>
-          <button onClick={() => handleMode('resume')}>Continue where we left off</button>
-        </>
-      ) : (
-        <>
-          <p>Mode: {mode}</p>
-          <button onClick={startListening} disabled={isListening}>🎤 Start</button>
-          <button onClick={stopListening} disabled={!isListening}>⏹️ Stop</button>
-          <div style={{ marginTop: '1rem' }}>
-            {conversation.map((msg, i) => (
-              <div key={i}>{msg}</div>
+          <div
+            style={{
+              border: '1px solid #ccc',
+              padding: 16,
+              height: '400px',
+              overflowY: 'auto',
+              marginTop: 20,
+              borderRadius: 8,
+            }}
+          >
+            {messages.map((msg, idx) => (
+              <div
+                key={idx}
+                style={{
+                  marginBottom: 12,
+                  textAlign: msg.role === 'user' ? 'right' : 'left',
+                }}
+              >
+                <strong>{msg.role === 'user' ? 'You' : msg.role === 'assistant' ? 'AI' : 'System'}</strong>
+                <div>{msg.content}</div>
+              </div>
             ))}
+            <div ref={bottomRef} />
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Type your answer here..."
+              style={{ width: '80%', padding: 8 }}
+            />
+            <button onClick={sendMessage} disabled={loading} style={{ marginLeft: 8 }}>
+              {loading ? '...' : 'Send'}
+            </button>
           </div>
         </>
       )}
