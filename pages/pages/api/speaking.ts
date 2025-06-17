@@ -1,22 +1,28 @@
-import { NextRequest } from 'next/server';
-import { OpenAIStream, StreamingTextResponse } from 'ai';
-import OpenAI from 'openai';
-
-export const runtime = 'edge';
+// pages/api/speaking.ts
+import { NextApiRequest, NextApiResponse } from 'next'
+import { OpenAI } from 'openai'
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '',
-});
+  apiKey: process.env.OPENAI_API_KEY
+})
 
-export async function POST(req: NextRequest) {
-  const { messages } = await req.json();
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' })
+  }
 
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4', // o 'gpt-3.5-turbo' si prefieres
-    messages,
-    stream: true,
-  });
+  const { messages } = req.body
 
-  const stream = OpenAIStream(response);
-  return new StreamingTextResponse(stream);
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages,
+      stream: false
+    })
+
+    return res.status(200).json(completion.choices[0].message)
+  } catch (error) {
+    console.error('OpenAI error:', error)
+    return res.status(500).json({ error: 'Something went wrong' })
+  }
 }
