@@ -1,6 +1,6 @@
 // pages/api/speaking.ts
 
-import type { NextRequest } from 'next/server';
+import { OpenAIStream, Message } from '@/lib/openai';
 import { OpenAIStream, Message } from '@/lib/OpenAIStream';
 
 export const config = {
