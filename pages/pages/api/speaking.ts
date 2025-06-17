@@ -1,36 +1,22 @@
-// pages/api/speaking.ts
+import { NextRequest } from 'next/server';
+import { OpenAIStream, StreamingTextResponse } from 'ai';
+import OpenAI from 'openai';
 
-import { NextApiRequest, NextApiResponse } from 'next';
-import { OpenAI } from 'openai';
+export const runtime = 'edge';
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY || '',
 });
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Only POST requests allowed' });
-  }
+export async function POST(req: NextRequest) {
+  const { messages } = await req.json();
 
-  const { prompt, history } = req.body;
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4', // o 'gpt-3.5-turbo' si prefieres
+    messages,
+    stream: true,
+  });
 
-  if (!prompt) {
-    return res.status(400).json({ error: 'Missing prompt' });
-  }
-
-  try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: [
-        ...history,
-        { role: 'user', content: prompt },
-      ],
-      stream: false,
-    });
-
-    res.status(200).json({ response: completion.choices[0].message.content });
-  } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ error: 'Something went wrong', details: error.message });
-  }
+  const stream = OpenAIStream(response);
+  return new StreamingTextResponse(stream);
 }
