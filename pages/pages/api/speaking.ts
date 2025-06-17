@@ -1,33 +1,36 @@
 // pages/api/speaking.ts
 
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { OpenAIStream, Message } from '../../lib/openai';
+import { NextApiRequest, NextApiResponse } from 'next';
+import { OpenAI } from 'openai';
 
-export const config = {
-  runtime: 'edge',
-};
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-export default async function handler(req: NextApiRequest) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 });
+    return res.status(405).json({ error: 'Only POST requests allowed' });
+  }
+
+  const { prompt, history } = req.body;
+
+  if (!prompt) {
+    return res.status(400).json({ error: 'Missing prompt' });
   }
 
   try {
-    const { messages } = await req.json();
-
-    if (!Array.isArray(messages)) {
-      return new Response('Invalid messages format', { status: 400 });
-    }
-
-    const stream = await OpenAIStream(messages as Message[]);
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      },
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [
+        ...history,
+        { role: 'user', content: prompt },
+      ],
+      stream: false,
     });
+
+    res.status(200).json({ response: completion.choices[0].message.content });
   } catch (error: any) {
-    return new Response(`Error: ${error.message}`, { status: 500 });
+    console.error(error);
+    res.status(500).json({ error: 'Something went wrong', details: error.message });
   }
 }
