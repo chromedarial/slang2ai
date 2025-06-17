@@ -1,0 +1,1 @@
+{ "name": "lang2ai", "scripts": { "dev": "next dev", "build": "next build", "start": "next start" } }

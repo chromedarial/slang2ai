@@ -1,0 +1,1 @@
+// Lógica para conectarse a la API de OpenAI
