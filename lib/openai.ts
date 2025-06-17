@@ -1,3 +1,5 @@
+// lib/openai.ts
+
 export type Message = {
   role: 'user' | 'system' | 'assistant';
   content: string;
@@ -24,7 +26,7 @@ export async function OpenAIStream(messages: Message[]) {
     }),
   });
 
-  if (!response.ok) {
+  if (!response.ok || !response.body) {
     throw new Error(await response.text());
   }
 
